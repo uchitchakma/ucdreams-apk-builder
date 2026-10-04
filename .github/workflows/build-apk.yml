@@ -45,18 +45,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Set Android Environment Variables
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
       - name: Generate Android Project Source
         run: |
-          python3 generate_project.py \
-            --app-name "${{ github.event.inputs.app_name }}" \
-            --package-name "${{ github.event.inputs.package_name }}" \
-            --web-url "${{ github.event.inputs.web_url }}" \
-            --theme-color "${{ github.event.inputs.theme_color }}" \
-            --build-id "${{ github.event.inputs.build_id }}" \
-            --icon-base64 "${{ github.event.inputs.icon_base64 }}"
+          python3 generate_project.py             --app-name "${{ github.event.inputs.app_name }}"             --package-name "${{ github.event.inputs.package_name }}"             --web-url "${{ github.event.inputs.web_url }}"             --theme-color "${{ github.event.inputs.theme_color }}"             --build-id "${{ github.event.inputs.build_id }}"             --icon-base64 "${{ github.event.inputs.icon_base64 }}"
 
       - name: Grant Execute Permission to Gradlew
         run: |
@@ -82,13 +78,14 @@ jobs:
             exit 1
           fi
 
-      - name: Upload APK as Release Asset
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "build-${{ github.event.inputs.build_id }}"
-          name: "Release ${{ github.event.inputs.app_name }} (${{ github.event.inputs.build_id }})"
-          draft: false
-          prerelease: false
-          files: output/*.apk
+      - name: Create GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "build-${{ github.event.inputs.build_id }}" output/*.apk             --title "Release ${{ github.event.inputs.app_name }} (${{ github.event.inputs.build_id }})"             --notes "Generated automated APK by UCDreams Web to App Cloud Builder."
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ github.event.inputs.build_id }}-apk"
+          path: output/*.apk
