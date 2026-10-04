@@ -1,0 +1,103 @@
+name: Build iOS Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'App Display Name'
+        required: true
+        default: 'My App'
+      bundle_id:
+        description: 'Bundle Identifier'
+        required: true
+        default: 'com.myapp.app'
+      web_url:
+        description: 'Target Website URL'
+        required: true
+        default: 'https://example.com'
+      theme_color:
+        description: 'Theme Hex Color'
+        required: false
+        default: '#0284c7'
+      build_id:
+        description: 'Unique Build ID'
+        required: true
+        default: 'ucd_1'
+      icon_base64:
+        description: 'Base64 Encoded Icon'
+        required: false
+        default: ''
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Dependencies
+        run: |
+          pip install Pillow
+
+      - name: Generate iOS Xcode Project
+        run: |
+          python3 generate_ios_project.py \
+            --app-name "${{ inputs.app_name }}" \
+            --bundle-id "${{ inputs.bundle_id }}" \
+            --web-url "${{ inputs.web_url }}" \
+            --theme-color "${{ inputs.theme_color }}" \
+            --build-id "${{ inputs.build_id }}" \
+            --icon-base64 "${{ inputs.icon_base64 }}"
+
+      - name: Build Xcode Archive & IPA
+        run: |
+          SAFE_NAME=$(echo "${{ inputs.app_name }}" | tr -cd '[:alnum:]_')
+          if [ -z "$SAFE_NAME" ]; then SAFE_NAME="App"; fi
+          
+          # Clean build archive
+          xcodebuild -project ios_project/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/App.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+          
+          # Create IPA package
+          mkdir -p Payload
+          cp -r build/App.xcarchive/Products/Applications/App.app Payload/
+          zip -qry "${SAFE_NAME}.ipa" Payload
+          
+          # Create Full Source / App Store Project ZIP
+          cd ios_project
+          zip -qry "../${SAFE_NAME}-Xcode-AppStore.zip" .
+          cd ..
+          
+          echo "SAFE_NAME=$SAFE_NAME" >> $GITHUB_ENV
+          ls -lh "${SAFE_NAME}.ipa" "${SAFE_NAME}-Xcode-AppStore.zip"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "build-${{ inputs.build_id }}"
+          name: "${{ inputs.app_name }} iOS Build (${{ inputs.build_id }})"
+          body: |
+            ### 🍏 ${{ inputs.app_name }} iOS Package
+            - **Bundle ID**: `${{ inputs.bundle_id }}`
+            - **Target URL**: `${{ inputs.web_url }}`
+            - **Build ID**: `${{ inputs.build_id }}`
+            - **Artifacts**: Standalone `.ipa` (Sideload / Testing) and Full Xcode Source ZIP (App Store Connect Ready).
+          draft: false
+          prerelease: false
+          files: |
+            ${{ env.SAFE_NAME }}.ipa
+            ${{ env.SAFE_NAME }}-Xcode-AppStore.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
