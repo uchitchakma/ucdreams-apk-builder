@@ -1,0 +1,94 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'App Display Name'
+        required: true
+        default: 'My App'
+      package_name:
+        description: 'Package Identifier (e.g. com.example.app)'
+        required: true
+        default: 'com.myapp.app'
+      web_url:
+        description: 'Target Website URL'
+        required: true
+        default: 'https://example.com'
+      theme_color:
+        description: 'Theme Hex Color'
+        required: false
+        default: '#0284c7'
+      build_id:
+        description: 'Unique Build Tracking ID'
+        required: true
+        default: 'ucd_test'
+      icon_base64:
+        description: 'Base64 Encoded App Icon PNG'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Generate Android Project Source
+        run: |
+          python3 generate_project.py \
+            --app-name "${{ github.event.inputs.app_name }}" \
+            --package-name "${{ github.event.inputs.package_name }}" \
+            --web-url "${{ github.event.inputs.web_url }}" \
+            --theme-color "${{ github.event.inputs.theme_color }}" \
+            --build-id "${{ github.event.inputs.build_id }}" \
+            --icon-base64 "${{ github.event.inputs.icon_base64 }}"
+
+      - name: Grant Execute Permission to Gradlew
+        run: |
+          cd android-app
+          chmod +x gradlew
+
+      - name: Build Android APK
+        run: |
+          cd android-app
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Locate and Prepare Output APK
+        run: |
+          mkdir -p output
+          CLEAN_NAME=$(echo "${{ github.event.inputs.app_name }}" | tr -cd '[:alnum:]')
+          if [ -z "$CLEAN_NAME" ]; then CLEAN_NAME="App"; fi
+          APK_PATH=$(find android-app/app/build/outputs/apk -name "*.apk" | head -n 1)
+          if [ -f "$APK_PATH" ]; then
+            cp "$APK_PATH" "output/${CLEAN_NAME}-${{ github.event.inputs.build_id }}.apk"
+            echo "APK generated at output/${CLEAN_NAME}-${{ github.event.inputs.build_id }}.apk"
+          else
+            echo "ERROR: No APK found!"
+            exit 1
+          fi
+
+      - name: Upload APK as Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "build-${{ github.event.inputs.build_id }}"
+          name: "Release ${{ github.event.inputs.app_name }} (${{ github.event.inputs.build_id }})"
+          draft: false
+          prerelease: false
+          files: output/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
