@@ -2,7 +2,6 @@ import os
 import sys
 import argparse
 import base64
-import subprocess
 import shutil
 
 parser = argparse.ArgumentParser()
@@ -32,6 +31,11 @@ os.makedirs(package_path, exist_ok=True)
 os.makedirs(os.path.join(res_dir, 'layout'), exist_ok=True)
 os.makedirs(os.path.join(res_dir, 'values'), exist_ok=True)
 os.makedirs(os.path.join(res_dir, 'mipmap-anydpi-v26'), exist_ok=True)
+os.makedirs(os.path.join(res_dir, 'mipmap-hdpi'), exist_ok=True)
+os.makedirs(os.path.join(res_dir, 'mipmap-mdpi'), exist_ok=True)
+os.makedirs(os.path.join(res_dir, 'mipmap-xhdpi'), exist_ok=True)
+os.makedirs(os.path.join(res_dir, 'mipmap-xxhdpi'), exist_ok=True)
+os.makedirs(os.path.join(res_dir, 'mipmap-xxxhdpi'), exist_ok=True)
 os.makedirs(os.path.join(res_dir, 'drawable'), exist_ok=True)
 os.makedirs(os.path.join(project_dir, 'gradle', 'wrapper'), exist_ok=True)
 
@@ -69,15 +73,6 @@ with open(os.path.join(project_dir, 'gradle.properties'), 'w') as f:
 android.useAndroidX=true
 android.nonTransitiveRClass=true
 kotlin.code.style=official
-''')
-
-# gradle-wrapper.properties
-with open(os.path.join(project_dir, 'gradle', 'wrapper', 'gradle-wrapper.properties'), 'w') as f:
-    f.write('''distributionBase=GRADLE_USER_HOME
-distributionPath=wrapper/dists
-distributionUrl=https\://services.gradle.org/distributions/gradle-8.2-bin.zip
-zipStoreBase=GRADLE_USER_HOME
-zipStorePath=wrapper/dists
 ''')
 
 # app/build.gradle.kts
@@ -137,15 +132,12 @@ with open(os.path.join(project_dir, 'app', 'src', 'main', 'AndroidManifest.xml')
 
     <application
         android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.{clean_name}"
-        android:usesCleartextTraffic="true"
-        tools:targetApi="31">
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -159,22 +151,6 @@ with open(os.path.join(project_dir, 'app', 'src', 'main', 'AndroidManifest.xml')
     </application>
 </manifest>
 ''')
-
-# Backup & extraction rules
-os.makedirs(os.path.join(res_dir, 'xml'), exist_ok=True)
-with open(os.path.join(res_dir, 'xml', 'backup_rules.xml'), 'w') as f:
-    f.write('''<?xml version="1.0" encoding="utf-8"?>
-<full-backup-content>
-</full-backup-content>''')
-
-with open(os.path.join(res_dir, 'xml', 'data_extraction_rules.xml'), 'w') as f:
-    f.write('''<?xml version="1.0" encoding="utf-8"?>
-<data-extraction-rules>
-    <cloud-backup>
-    </cloud-backup>
-    <device-transfer>
-    </device-transfer>
-</data-extraction-rules>''')
 
 # strings.xml & colors.xml & themes.xml
 with open(os.path.join(res_dir, 'values', 'strings.xml'), 'w') as f:
@@ -197,6 +173,50 @@ with open(os.path.join(res_dir, 'values', 'themes.xml'), 'w') as f:
         <item name="android:statusBarColor">@color/theme_primary</item>
     </style>
 </resources>''')
+
+# Drawables & Adaptive Icons
+with open(os.path.join(res_dir, 'drawable', 'ic_launcher_background.xml'), 'w') as f:
+    f.write(f'''<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="{theme_color}"
+        android:pathData="M0,0h108v108h-108z" />
+</vector>''')
+
+initials = "".join([w[0] for w in app_name.split() if w])[:2].upper() or "APP"
+
+with open(os.path.join(res_dir, 'drawable', 'ic_launcher_foreground.xml'), 'w') as f:
+    f.write('''<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,20 C35.2,20 20,35.2 20,54 C20,72.8 35.2,88 54,88 C72.8,88 88,72.8 88,54 C88,35.2 72.8,20 54,20 Z M54,76 C41.8,76 32,66.2 32,54 C32,41.8 41.8,32 54,32 C66.2,32 76,41.8 76,54 C76,66.2 66.2,76 54,76 Z" />
+</vector>''')
+
+with open(os.path.join(res_dir, 'mipmap-anydpi-v26', 'ic_launcher.xml'), 'w') as f:
+    f.write('''<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>''')
+
+# Write fallback png icon if provided
+if args.icon_base64:
+    try:
+        raw_icon = base64.b64decode(args.icon_base64)
+        for d in ['mipmap-mdpi', 'mipmap-hdpi', 'mipmap-xhdpi', 'mipmap-xxhdpi', 'mipmap-xxxhdpi']:
+            with open(os.path.join(res_dir, d, 'ic_launcher.png'), 'wb') as f:
+                f.write(raw_icon)
+    except Exception as e:
+        print('Error decoding icon_base64:', e)
 
 # activity_main.xml layout
 with open(os.path.join(res_dir, 'layout', 'activity_main.xml'), 'w') as f:
@@ -404,14 +424,4 @@ class MainActivity : AppCompatActivity() {{
 }}
 ''')
 
-# Download official gradlew script
-os.system('gradle wrapper --gradle-version 8.2')
-if not os.path.exists(os.path.join(project_dir, 'gradlew')):
-    # Create standard gradlew unix script
-    with open(os.path.join(project_dir, 'gradlew'), 'w') as f:
-        f.write('''#!/bin/sh
-exec gradle "$@"
-''')
-    os.chmod(os.path.join(project_dir, 'gradlew'), 0o755)
-
-print("Project generated successfully!")
+print("Android project generated with complete mipmap adaptive icon resources!")
